@@ -1,0 +1,86 @@
+#+title: g-ulysses: model | explore | plan
+#+author: Kostas Zorbadelos <kzorba@nixly.net>
+#+options: num:1
+# +SETUPFILE: org-html-themes/org/theme-readtheorg-local.setup
+
+|--------------------------|
+| [[./images/logo_github.png]] |
+|--------------------------|
+
+* Introduction
+This page serves as initial notes for a new open source IP network tool. It provides a functionality scope, the initial design architecture and thoughts about the implementation. Operation of modern IP networks should be based on software tools for enhanced quality and fast reaction on events. At the heart of the tool lies a detailed network model that incorporates all the information from the network IGP. The software initially focuses on service provider WANs and is meant to be used as a debugging, monitoring and planning tool. Many of the features discussed are part of what the industry mentions as an "SDN controller" but we will avoid the use of this term.
+
+The tool takes into account the needs of network operators, the design is produced by someone with extensive service provider experience and operation of real production IP networks with country or cross-continent geo-coverage. A main purpose is to also create a community of interested people around the tool to contribute ideas and code. The desire is to produce something useful to network engineers with high performance, ready to handle even the biggest production networks. Most of the tools in this space are controlled by networking vendors, so creating a quality open source tool should create the basis of a new community around it.
+
+* Purpose and feature scope
+The scope and features mentioned in the following section are indeed broad and ambitious but the idea is that development will progress gradually, attacking an individual section at a time. Commercial tools that already have these features are multi-year development efforts.
+
+** Network Modeling
+The model of an IP network should incorporate all the information from the traffic engineering database of IGPs (ISIS or OSPF). Nodes (router IDs), links, IGP metrics and attached networks are enhanced with extra attributes like traffic engineering metric, admin groups/colors, etc. On top of that, we should put all the information regarding tunnels that steer traffic in specific ways (MPLS TE LSPs or Segment Routing tunnels). Finally, we can also add the traffic demands (PE to PE traffic matrix) that should be collected via netflow / ipfix collector infrastructures.
+
+Having all this data in an abstract graph will give us an excellent simulation of the real modelled network and can serve as a basis for data exploration or planning.
+
+** Data exploration
+All the data in the model should be made available for queries via an API. Ideally, the API should be the only interface to the model data and on top of it other clients will be developed. The modelled data are interconnected and there are a lot of possibilities for queries, so the API should provide the necessary flexibility and expressiveness. A REST-based API does not seem to be appropriate, a GraphQL-based API is most probably the way to go.
+
+The GraphQL API can evolve with time, providing the necessary extra functionality as the model is enhanced with extra information. This is much better than a REST API that would need different versions as development progresses and at least initially cannot guarantee any backward compatibility. GraphQL is more complex than a REST API, but can provide the expressiveness and seems to be a natural fit for an IP network model that is a graph by nature.
+
+Example of queries over the model data are (from simple to more complex):
+- give information about a network node or subset of nodes
+- show information about a link (node endpoints, reserved bandwidth, IGP metric, TE metric etc)
+- show tunnels (eg MPLS LSPs) starting from node X
+- show tunnels traversing a link
+- find paths from node A to node B, with restrictions (path computation element)
+- given a flow / traffic demand between 2 nodes find how traffic is routed and the link utilization (basis for planning tool)
+Queries from network operators on the model could be anything, also for debugging purposes, the above are just examples.
+
+** Planning tool
+Given the features for data exploration and routing simulation of flows, we have the basis for a planning tool. Given a traffic matrix (PE to PE demands) we should be able to simulate how traffic will be routed and how much the utilization of links will be. The simulation should take into account TE LSPs and/or aggregated interfaces (LAGs) on the topology.
+
+We should be able to simulate and experiment by adding extra TE LSPs and/or fail individual links and nodes. These are generally mentioned as "What-If" scenaria and analysis. At the very advanced stages of the tool, recommendations can also be given for congestion avoidance.
+
+
+* Software architecture and implementation thoughts
+With the features and scope described previously, the software should be highly performant and be able to scale to multiple processors, memory and demands from many simultaneous clients. It should use a systems language but not C/C++. Modern alternatives are Go or Rust and Rust is the current selected candidate.
+
++ Multithreaded software
++ Modeler core having in-memory model and an API endpoint for data querying
++ Import plugins to enhance the model (bgp-ls, file-import, pcep, router-config-parser, kafka(?))
++ Export plugins (file-export/serializer, kafka)
++ Two modes of operation: a) live network feed and model b) off-line model and planning tool (allow what-if scenaria and simulation)
++ A cli client as the main user interface on-top of the (GraphQL) API in the core modeller
++ Extra clients (graphical or web interfaces) highly desired, however initial focus is the core and the cli client
+
+** License
+We plan to use the =BSD 3-Clause "New" or "Revised" License= for the project to promote its usage even in commercial environments and put the least possible restrictions on the software use. Hopefully this will help also with attracting developer contributions and creating a vibrant community.
+
+* Relevant RFCs
+- [[https://datatracker.ietf.org/doc/html/rfc7752][RFC 7752: North-Bound Distribution of Link-State and Traffic Engineering (TE) Information Using BGP]]
+- [[https://datatracker.ietf.org/doc/html/rfc4655][RFC 4655: A Path Computation Element (PCE)-Based Architecture]]
+- [[https://datatracker.ietf.org/doc/html/rfc5440][RFC 5440: Path Computation Element (PCE) Communication Protocol (PCEP)]]
+- [[https://datatracker.ietf.org/doc/html/rfc8345][RFC 8345: A YANG Data Model for Network Topologies]]
+- [[https://datatracker.ietf.org/doc/html/rfc8346][RFC 8346: A YANG Data Model for Layer 3 Topologies]]
+- [[https://datatracker.ietf.org/doc/html/rfc8571][RFC 8571: BGP - Link State (BGP-LS) Advertisement of IGP Traffic Engineering Performance Metric Extensions]]
+
+* Task Notes [0/2]
+** TODO Documentation
++ [X] Write an initial scope, design and thoughts document as notes.
++ [-] Write and update the list of supported RFCs.
++ [ ] Write the software architecture document after initial skeleton implementation.
+
+** HOLD Implementation
++ [X] Create a github organization and repository.
++ [ ] (plugins) Implement a first import BGP-LS plugin. It should collect and feed the topology data to the modeler core component.
++ [ ] (core) Implement a very basic modeler core and a rough initial GraphQL API on the collected network data.
++ [ ] (plugins) Implement a model serializer, can do import / export of the model.
++ [ ] (client) Implement a CLI client using the GraphQL API.
++ [ ] (plugins) Collect data regarding network tunnels (LSPs) and incorporate them in the model. PCEP and/or router-config-parser are targets.
++ [ ] (core) Expose tunnel information via the GraphQL API.
++ [ ] (core) Introduce a path computation component / engine on top of the model. Expose the path computation via the API.
++ [ ] (plugins) Incorporate flow (netflow/ipfix) data in the model.
++ [ ] (core) Implement simulation of a flow routing on the topology.
++ [ ] Planner: given a demand matrix, simulate the routing on the topology and show link utilization.
++ [ ] Planner: Implement what-if scenaria and analysis.
+
+* Contact
+The tool is currently at the very initial stages of design and implementation, so keep an eye on this space for developments. If you are a network operator and wish to share you support or thoughts / ideas about the tool, feel free to reach me or open an issue on this github repo.
